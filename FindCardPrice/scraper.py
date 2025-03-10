@@ -11,9 +11,13 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import time
 
 service = Service()
 options = webdriver.ChromeOptions()
+
+def expand_shadow_element(driver, element):
+    return driver.execute_script('return arguments[0].shadowRoot', element)
 
 # === Data Extraction Functions ===
 def extract_lowest_price_and_set_from_page_f2f(driver, url, name):
@@ -41,6 +45,38 @@ def extract_lowest_price_and_set_from_page_f2f(driver, url, name):
                 if (lowest_price is None or numeric_price < lowest_price) and name_text == name:
                     lowest_price = numeric_price
                     corresponding_set = set_text
+        return (lowest_price, corresponding_set)
+    except Exception as e:
+        print(f"Error on page {url}: {e}")
+        return (None, None)
+
+def extract_lowest_price_and_set_from_page_401(driver, url, name):
+    try:
+        time.sleep(1)
+        shadow_host = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div#fast-simon-serp-app"))
+        )
+        shadow_root1 = expand_shadow_element(driver, shadow_host)
+        root1 = shadow_root1.find_element(By.CSS_SELECTOR, "#fs-serp-page")
+        filters_grid_wrapper = root1.find_element(By.CSS_SELECTOR, "div.fs-result-page-1401w5l.filters-grid-wrapper")
+        products_grid = filters_grid_wrapper.find_element(By.CSS_SELECTOR, "#products-grid")
+        product_cards = products_grid.find_elements(By.CSS_SELECTOR, "div.product-card.fs-results-product-card.fs-product-card.fs-result-page-nxn4j1.product-card-border-hover.fs-product-has-compare-price")
+        lowest_price = None
+        corresponding_set = None
+        for card in product_cards:
+            name_element = card.find_element(By.CSS_SELECTOR, "span.product-title-search-term")
+            set_element = card.find_element(By.CSS_SELECTOR, "div.vendor.fs-product-vendor")
+            price_element = card.find_element(By.CSS_SELECTOR, "div.price.fs-result-page-1a37dw5")
+
+            if name_element and set_element and price_element:
+                name_text = name_element.text.strip().lower()
+                set_text = set_element.text.strip()
+                price_text = price_element.text.strip()
+                if "art series" not in set_text.lower():
+                    numeric_price = float(re.sub(r'[^\d.]', '', price_text))
+                    if (lowest_price is None or numeric_price < lowest_price) and name_text == name:
+                        lowest_price = numeric_price
+                        corresponding_set = set_text
         return (lowest_price, corresponding_set)
     except Exception as e:
         print(f"Error on page {url}: {e}")
@@ -95,6 +131,10 @@ def construct_url_fg(card_name):
         '/', '%2F').replace("'", '%27').replace(',', '%2C').replace(' ', '%20')
     return f"{base_url}{formatted_name}%2A"
     
+def construct_url_401(card_name):
+    base_url = "https://store.401games.ca/pages/search-results?q="
+    formatted_name = card_name.replace("'", '%27').replace(' ', '+')
+    return f"{base_url}{formatted_name}&filters=In+Stock,True,Category,Magic:+The+Gathering+Singles&search={formatted_name}"
 
 # === CSV Functions ===
 def read_card_names(csv_file):
@@ -119,7 +159,8 @@ def main():
     card_names = read_card_names(cards_csv_file)
     sites = {
         'f2f': (construct_url_f2f, extract_lowest_price_and_set_from_page_f2f),
-        'fg': (construct_url_fg, extract_lowest_price_and_set_from_page_fg)
+        'fg': (construct_url_fg, extract_lowest_price_and_set_from_page_fg),
+        '401': (construct_url_401, extract_lowest_price_and_set_from_page_401)
     }
     with open(output_csv_file, mode='w', newline='') as file:
         writer = csv.writer(file)
