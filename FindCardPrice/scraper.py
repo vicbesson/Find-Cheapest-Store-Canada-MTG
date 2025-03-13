@@ -6,10 +6,12 @@ Created on Thu Mar  6 13:32:09 2025
 """
 import csv
 import re
+import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from bs4 import BeautifulSoup
 
 options = webdriver.ChromeOptions()
 prefs = {'profile.default_content_setting_values': {'images': 2,  
@@ -23,33 +25,28 @@ prefs = {'profile.default_content_setting_values': {'images': 2,
                             'durable_storage': 2}}
 options.add_experimental_option("prefs", prefs)
 options.page_load_strategy = 'none'
-options.add_argument("--headless");
+#options.add_argument("--headless");
 options.add_argument("disable-infobars")
 options.add_argument("--disable-extensions")
-
-def expand_shadow_element(driver, element):
-    return driver.execute_script('return arguments[0].shadowRoot', element)
 
 # === Data Extraction Functions ===
 def extract_lowest_price_and_set_from_page_f2f(driver, url, name):
     lowest_price = None
     corresponding_set = None
     try:
-        card_elements = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located(
-                (By.CSS_SELECTOR, "div.hawk-results__item-name"))
-        )
-        name_length = len(name)
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        card_elements = soup.select('div.hawk-results__listing div.hawk-results__item-name')
         for card_element in card_elements:
-            name_element = card_element.find_element(By.CSS_SELECTOR, "h4.hawk-results__hawk-contentTitle")
-            set_element = card_element.find_element(By.CSS_SELECTOR, "p.hawk-results__hawk-contentSubtitle")
-            price_element = card_element.find_element(By.CSS_SELECTOR, "span.retailPrice")
+            name_element = card_element.select_one("div.hawk-results__item-name h4.hawk-results__hawk-contentTitle")
+            set_element = card_element.select_one("div.hawk-results__item-name p.hawk-results__hawk-contentSubtitle")
+            price_element = card_element.select_one("span.retailPrice")
+            if not set_element or not name_element or not price_element:
+                continue
             name_text = name_element.text.strip().lower()
             set_text = set_element.text.strip().lower()
             price_text = price_element.text.strip()
-            if "art series" not in set_text and (name_text.startswith(name) or name_text == name) and price_text:
-                valid_length = len(name_text) == name_length or name_text[name_length] in [' ', '(', '[']
-                if valid_length:
+            if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                     if (lowest_price is None or numeric_price < lowest_price):
                         lowest_price = numeric_price
@@ -66,7 +63,7 @@ def extract_lowest_price_and_set_from_page_401(driver, url, name):
         shadow_host = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "div#fast-simon-serp-app"))
         )
-        shadow_root = expand_shadow_element(driver, shadow_host)
+        shadow_root = driver.execute_script('return arguments[0].shadowRoot', shadow_host)
         root = shadow_root.find_element(By.CSS_SELECTOR, "#fs-serp-page")
         filters_grid_wrapper = root.find_element(By.CSS_SELECTOR, "div.fs-result-page-1401w5l.filters-grid-wrapper")
         products_grid = filters_grid_wrapper.find_element(By.CSS_SELECTOR, "#products-grid")
@@ -78,7 +75,7 @@ def extract_lowest_price_and_set_from_page_401(driver, url, name):
             name_text = name_element.get_attribute('aria-label').strip().lower()
             set_text = set_element.text.strip().lower()
             price_text = price_element.text.strip()
-            if "art series" not in set_text and (name_text.startswith(name) or name_text == name) and price_text:
+            if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
                 numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                 if (lowest_price is None or numeric_price < lowest_price):
                     lowest_price = numeric_price
@@ -92,32 +89,24 @@ def extract_lowest_price_and_set_from_page_fg(driver, url, name):
     lowest_price = None
     corresponding_set = None
     try:
-        card_elements = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located(
-                (By.CSS_SELECTOR, "div.productCard__lower"))
-        )
-        name_length = len(name)
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        card_elements = soup.select('div.collectionGrid div.productCard__card')
         for card_element in card_elements:
-            product_type = card_element.get_attribute("data-producttype")
-            if product_type == "MTG Single":
-                set_element = card_element.find_element(By.CSS_SELECTOR, "p.productCard__setName")
-                name_element = card_element.find_element(By.CSS_SELECTOR, "p.productCard__title")
-                price_element = card_element.find_element(By.CSS_SELECTOR, "span.money")
-                price_text = price_element.text.strip()
-                set_text = set_element.text.strip().lower()
-                name_text = name_element.text.strip().lower()
-                if (name_text.startswith(name) or name_text == name):
-                    valid_length = len(name_text) == name_length or name_text[name_length] in [' ', '(', '[']
-                    if valid_length:
-                        out_of_stock_elements = name_element.find_elements(By.XPATH, "../following-sibling::div[contains(@class, 'productCard__button--outOfStock')]")
-                        add_to_cart_elements = name_element.find_elements(By.XPATH, "../following-sibling::form[contains(@class, 'product-item__action-list')]")
-                        is_out_of_stock = any(out_of_stock_element.is_displayed() for out_of_stock_element in out_of_stock_elements)
-                        is_in_stock = any(add_to_cart_element.is_displayed() for add_to_cart_element in add_to_cart_elements)
-                        if not is_out_of_stock and is_in_stock and price_text:
-                            numeric_price = float(re.sub(r'[^\d.]', '', price_text))
-                            if lowest_price is None or numeric_price < lowest_price:
-                                lowest_price = numeric_price
-                                corresponding_set = set_text
+            set_element = card_element.select_one("div.productCard__lower p.productCard__setName")
+            name_element = card_element.select_one("div.productCard__lower p.productCard__title")
+            price_element = card_element.select_one("div.productCard__lower p.productCard__price span.money")
+            if not set_element or not name_element or not price_element:
+                continue
+            price_text = price_element.text.strip()
+            set_text = set_element.text.strip().lower()
+            name_text = name_element.text.strip().lower()
+            if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                if not card_element.select(".productCard__button--outOfStock"):
+                    numeric_price = float(re.sub(r'[^\d.]', '', price_text))
+                    if lowest_price is None or numeric_price < lowest_price:
+                        lowest_price = numeric_price
+                        corresponding_set = set_text
         return (lowest_price, corresponding_set)
     except Exception as e:
         print(f"Error on page {url}: {e}")
@@ -127,28 +116,75 @@ def extract_lowest_price_and_set_from_page_firstplayer(driver, url, name):
     lowest_price = None
     corresponding_set = None
     try:
-        card_elements = WebDriverWait(driver, 0).until(
-            EC.presence_of_all_elements_located(
-                (By.CSS_SELECTOR, ".variant-row.in-stock"))
-        )
-        name_length = len(name)
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        card_elements = soup.select('.variant-row.in-stock')
         for card_element in card_elements:
-            form_element = card_element.find_element(By.CSS_SELECTOR, 'form.add-to-cart-form')
-            name_text = form_element.get_attribute('data-name').strip().lower()
-            price_text = form_element.get_attribute('data-price').strip().lower()
-            set_text = form_element.get_attribute('data-category').strip().lower()
-            if (name_text.startswith(name) or name_text == name) and price_text:
-                valid_length = len(name_text) == name_length or name_text[name_length] in [' ', '(', '[']
-                if valid_length:
+            form_element = card_element.find('form', class_='add-to-cart-form')
+            if form_element:
+                name_text = form_element.get('data-name', '').strip().lower()
+                price_text = form_element.get('data-price', '').strip().lower()
+                set_text = form_element.get('data-category', '').strip().lower()
+                if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                        numeric_price = float(re.sub(r'[^\d.]', '', price_text))
+                        if (lowest_price is None or numeric_price < lowest_price):
+                            lowest_price = numeric_price
+                            corresponding_set = set_text
+        return (lowest_price, corresponding_set)
+    except Exception as e:
+        print(f"Error on page {url}: {e}")
+        return (lowest_price, corresponding_set)
+
+def extract_lowest_price_and_set_from_page_comichunter(driver, url, name):
+    lowest_price = None
+    corresponding_set = None
+    try:
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        card_elements = soup.select('div.products-container li.product.enable-msrp')
+        for card_element in card_elements:
+            form_element = card_element.find('form', class_='add-to-cart-form')
+            if form_element:
+                name_text = form_element.get('data-name', '').strip().lower()
+                price_text = form_element.get('data-price', '').strip().lower()
+                set_text = form_element.get('data-category', '').strip().lower()
+                if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                        numeric_price = float(re.sub(r'[^\d.]', '', price_text))
+                        if (lowest_price is None or numeric_price < lowest_price):
+                            lowest_price = numeric_price
+                            corresponding_set = set_text
+        return (lowest_price, corresponding_set)
+    except Exception as e:
+        print(f"Error on page {url}: {e}")
+        return (lowest_price, corresponding_set)
+
+def extract_lowest_price_and_set_from_page_fanofthesport(driver, url, name):
+    lowest_price = None
+    corresponding_set = None
+    try:
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        card_elements = soup.select('div.collectionGrid div.productCard__card')
+        for card_element in card_elements:
+            set_element = card_element.select_one("div.productCard__lower p.productCard__setName")
+            name_element = card_element.select_one("div.productCard__lower p.productCard__title")
+            price_element = card_element.select_one("div.productCard__lower p.productCard__price")
+            if not set_element or not name_element or not price_element:
+                continue
+            price_text = price_element.text.strip()
+            set_text = set_element.text.strip().lower()
+            name_text = name_element.text.strip().lower()
+            if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                if not card_element.select(".productCard__button--outOfStock"):
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
-                    if (lowest_price is None or numeric_price < lowest_price):
+                    if lowest_price is None or numeric_price < lowest_price:
                         lowest_price = numeric_price
                         corresponding_set = set_text
         return (lowest_price, corresponding_set)
     except Exception as e:
         print(f"Error on page {url}: {e}")
         return (lowest_price, corresponding_set)
-    
+
 # === URL Construction Functions ===
 def construct_url_f2f(card_name):
     base_url = "https://www.facetofacegames.com/search/?keyword="
@@ -169,8 +205,19 @@ def construct_url_401(card_name):
 
 def construct_url_firstplayer(card_name):
     base_url = "https://www.firstplayer.ca/products/search?q="
-    formatted_name = card_name.replace("'", '%27').replace(' ', '+')
+    formatted_name = card_name.replace("'", '%27').replace(',', '%2C').replace(' ', '+')
     return f"{base_url}{formatted_name}"
+
+def construct_url_comichunter(card_name):
+    base_url = "https://comichunter.crystalcommerce.com/products/search?q="
+    formatted_name = card_name.replace("'", '%27').replace(',', '%2C').replace(' ', '+')
+    return f"{base_url}{formatted_name}&c=1"
+
+def construct_url_fanofthesport(card_name):
+    base_url = "https://fanofthesport.com/search?page=1&q=%2A"
+    formatted_name = card_name.replace(
+        '/', '%2F').replace("'", '%27').replace(',', '%2C').replace(' ', '%20')
+    return f"{base_url}{formatted_name}%2A"
 
 # === CSV Functions ===
 def read_card_names(csv_file):
@@ -195,9 +242,11 @@ def main():
     card_names = read_card_names(cards_csv_file)
     sites = {
         1: (construct_url_firstplayer, extract_lowest_price_and_set_from_page_firstplayer), #FirstPlayer
-        2: (construct_url_f2f, extract_lowest_price_and_set_from_page_f2f), #FacetoFaceGames
-        3: (construct_url_fg, extract_lowest_price_and_set_from_page_fg), #FusionGaming
-        4: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401Games
+        2: (construct_url_fanofthesport, extract_lowest_price_and_set_from_page_fanofthesport), #FanofTheSport
+        3: (construct_url_comichunter, extract_lowest_price_and_set_from_page_comichunter), #ComicHunter
+        4: (construct_url_f2f, extract_lowest_price_and_set_from_page_f2f), #FacetoFaceGames
+        5: (construct_url_fg, extract_lowest_price_and_set_from_page_fg), #FusionGaming
+        6: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401Games
     }
     with open(output_csv_file, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -218,7 +267,7 @@ def main():
                 driver.switch_to.window(driver.window_handles[-1])
                 handles[site] = (driver.current_window_handle, url)
                 driver.get(url)
-        driver.implicitly_wait(2.5)
+        time.sleep(1.2)
         for site, (_, extract_info) in sites.items():
             driver.switch_to.window(handles[site][0])
             price, set_name = extract_info(driver, handles[site][1], card_name)
@@ -236,3 +285,4 @@ def main():
     
 if __name__ == '__main__':
     main()
+    print("Done!")
