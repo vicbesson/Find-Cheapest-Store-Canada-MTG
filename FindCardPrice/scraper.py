@@ -8,28 +8,25 @@ import csv
 import re
 import time
 import sqlite3
+import subprocess
+import sys
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 
-options = webdriver.ChromeOptions()
-prefs = {'profile.default_content_setting_values': {'images': 2,  
-                            'plugins': 2, 'popups': 2, 'geolocation': 2, 
-                            'notifications': 2, 'auto_select_certificate': 2, 'fullscreen': 2, 
-                            'mouselock': 2, 'mixed_script': 2, 'media_stream': 2, 
-                            'media_stream_mic': 2, 'media_stream_camera': 2, 'protocol_handlers': 2, 
-                            'ppapi_broker': 2, 'automatic_downloads': 2, 'midi_sysex': 2, 
-                            'push_messaging': 2, 'ssl_cert_decisions': 2, 'metro_switch_to_desktop': 2, 
-                            'protected_media_identifier': 2, 'app_banner': 2, 'site_engagement': 2, 
-                            'durable_storage': 2}}
-options.add_experimental_option("prefs", prefs)
-options.page_load_strategy = 'none'
-options.add_argument("--headless");
-options.add_argument("disable-infobars")
-options.add_argument("--disable-extensions")
+def check_and_install_dependencies():
+    required_packages = ['selenium', 'beautifulsoup4']
+    for package in required_packages:
+        try:
+            __import__(package)
+        except ImportError:
+            print(f"Package '{package}' is not installed. Installing now...")
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
+            print(f"Package '{package}' has been installed successfully.")
 
+# === Sqlite Functions ===
 def initialize_database():
     with sqlite3.connect('card_prices.sqlite') as connection:
         cursor = connection.cursor()
@@ -48,35 +45,31 @@ def initialize_database():
 def insert_or_update_card_data(card_name, lowest_price, card_set, url):
     with sqlite3.connect('card_prices.sqlite') as connection:
         cursor = connection.cursor()
-        query_check = '''
+        cursor.execute('''
             SELECT id FROM cards
             WHERE card_name = ? AND date_added < DATETIME('now', '-1 day')
-        '''
-        cursor.execute(query_check, (card_name))
+        ''', (card_name,))
         result = cursor.fetchone()
         if result:
-            query_update = '''
+            cursor.execute('''
                 UPDATE cards
                 SET lowest_price = ?, card_set = ?, url = ?, date_added = CURRENT_TIMESTAMP
                 WHERE id = ?
-            '''
-            cursor.execute(query_update, (lowest_price, card_set, url, result[0]))
+            ''', (lowest_price, card_set, url, result[0]))
         else:
-            query_insert = '''
+            cursor.execute('''
                 INSERT INTO cards (card_name, lowest_price, card_set, url)
                 VALUES (?, ?, ?, ?)
-            '''
-            cursor.execute(query_insert, (card_name, lowest_price, card_set, url))
+            ''', (card_name, lowest_price, card_set, url))
         connection.commit()
 
 def card_exists_recently(connection, card_name):
     cursor = connection.cursor()
-    query = '''
+    cursor.execute('''
         SELECT card_name, lowest_price, card_set, url
         FROM cards
         WHERE card_name = ? AND date_added >= DATETIME('now', '-1 day')
-    '''
-    cursor.execute(query, (card_name,))
+    ''', (card_name,))
     result = cursor.fetchone()
     return result
 
@@ -306,6 +299,22 @@ def write_lowest_price(card_name, lowest_price, set_name, url, csv_file):
 
 # === Main Function ===
 def main():
+    options = webdriver.ChromeOptions()
+    prefs = {'profile.default_content_setting_values': {'images': 2,  
+                                'plugins': 2, 'popups': 2, 'geolocation': 2, 
+                                'notifications': 2, 'auto_select_certificate': 2, 'fullscreen': 2, 
+                                'mouselock': 2, 'mixed_script': 2, 'media_stream': 2, 
+                                'media_stream_mic': 2, 'media_stream_camera': 2, 'protocol_handlers': 2, 
+                                'ppapi_broker': 2, 'automatic_downloads': 2, 'midi_sysex': 2, 
+                                'push_messaging': 2, 'ssl_cert_decisions': 2, 'metro_switch_to_desktop': 2, 
+                                'protected_media_identifier': 2, 'app_banner': 2, 'site_engagement': 2, 
+                                'durable_storage': 2}}
+    options.add_experimental_option("prefs", prefs)
+    options.page_load_strategy = 'none'
+    options.add_argument("--headless");
+    options.add_argument("disable-infobars")
+    options.add_argument("--disable-extensions")
+    driver = webdriver.Chrome(options=options)
     initialize_database()
     cards_csv_file = 'card_names.csv'
     output_csv_file = 'card_lowest_prices.csv'
@@ -318,7 +327,6 @@ def main():
         5: (construct_url_firstplayer, extract_lowest_price_and_set_from_page_firstplayer), #FirstPlayer
         6: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401Games
     }
-    driver = webdriver.Chrome(options=options)
     with open(output_csv_file, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Card Name", "Lowest Price", "Set", "URL"])
@@ -365,5 +373,6 @@ def main():
         connection.close()
     
 if __name__ == '__main__':
+    check_and_install_dependencies()
     main()
     print("Done!")
