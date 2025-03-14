@@ -7,6 +7,7 @@ Created on Thu Mar  6 13:32:09 2025
 import csv
 import re
 import time
+import sqlite3
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -25,18 +26,69 @@ prefs = {'profile.default_content_setting_values': {'images': 2,
                             'durable_storage': 2}}
 options.add_experimental_option("prefs", prefs)
 options.page_load_strategy = 'none'
-#options.add_argument("--headless");
+options.add_argument("--headless");
 options.add_argument("disable-infobars")
 options.add_argument("--disable-extensions")
+
+def initialize_database():
+    with sqlite3.connect('card_prices.sqlite') as connection:
+        cursor = connection.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_name TEXT NOT NULL,
+                lowest_price REAL NOT NULL,
+                card_set TEXT NOT NULL,
+                url TEXT NOT NULL,
+                date_added DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        connection.commit()
+
+def insert_or_update_card_data(card_name, lowest_price, card_set, url):
+    with sqlite3.connect('card_prices.sqlite') as connection:
+        cursor = connection.cursor()
+        query_check = '''
+            SELECT id FROM cards
+            WHERE card_name = ? AND date_added < DATETIME('now', '-1 day')
+        '''
+        cursor.execute(query_check, (card_name))
+        result = cursor.fetchone()
+        if result:
+            query_update = '''
+                UPDATE cards
+                SET lowest_price = ?, card_set = ?, url = ?, date_added = CURRENT_TIMESTAMP
+                WHERE id = ?
+            '''
+            cursor.execute(query_update, (lowest_price, card_set, url, result[0]))
+        else:
+            query_insert = '''
+                INSERT INTO cards (card_name, lowest_price, card_set, url)
+                VALUES (?, ?, ?, ?)
+            '''
+            cursor.execute(query_insert, (card_name, lowest_price, card_set, url))
+        connection.commit()
+
+def card_exists_recently(connection, card_name):
+    cursor = connection.cursor()
+    query = '''
+        SELECT card_name, lowest_price, card_set, url
+        FROM cards
+        WHERE card_name = ? AND date_added >= DATETIME('now', '-1 day')
+    '''
+    cursor.execute(query, (card_name,))
+    result = cursor.fetchone()
+    return result
 
 # === Data Extraction Functions ===
 def extract_lowest_price_and_set_from_page_f2f(driver, url, name):
     lowest_price = None
     corresponding_set = None
+    corresponding_url = None
     try:
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
-        card_elements = soup.select('div.hawk-results__listing div.hawk-results__item-name')
+        card_elements = soup.select('div.hawk-results__listing div.hawk-results-item__inner')
         for card_element in card_elements:
             name_element = card_element.select_one("div.hawk-results__item-name h4.hawk-results__hawk-contentTitle")
             set_element = card_element.select_one("div.hawk-results__item-name p.hawk-results__hawk-contentSubtitle")
@@ -51,23 +103,23 @@ def extract_lowest_price_and_set_from_page_f2f(driver, url, name):
                     if (lowest_price is None or numeric_price < lowest_price):
                         lowest_price = numeric_price
                         corresponding_set = set_text
-        return (lowest_price, corresponding_set)
+                        url_element = card_element.find('a', href=True)
+                        corresponding_url = url_element.get("href")
+        return (lowest_price, corresponding_set, corresponding_url)
     except Exception as e:
         print(f"Error on page {url}: {e}")
-        return (lowest_price, corresponding_set)
+        return (lowest_price, corresponding_set, corresponding_url)
 
 def extract_lowest_price_and_set_from_page_401(driver, url, name):
     lowest_price = None
     corresponding_set = None
+    corresponding_url = None
     try:
-        shadow_host = WebDriverWait(driver, 10).until(
+        shadow_host = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "div#fast-simon-serp-app"))
         )
         shadow_root = driver.execute_script('return arguments[0].shadowRoot', shadow_host)
-        root = shadow_root.find_element(By.CSS_SELECTOR, "#fs-serp-page")
-        filters_grid_wrapper = root.find_element(By.CSS_SELECTOR, "div.fs-result-page-1401w5l.filters-grid-wrapper")
-        products_grid = filters_grid_wrapper.find_element(By.CSS_SELECTOR, "#products-grid")
-        product_cards = products_grid.find_elements(By.CSS_SELECTOR, "div.product-card.fs-results-product-card.fs-product-card.fs-result-page-nxn4j1.product-card-border-hover.fs-product-has-compare-price")
+        product_cards = shadow_root.find_elements(By.CSS_SELECTOR, "div.product-card.fs-results-product-card.fs-product-card.fs-result-page-nxn4j1.product-card-border-hover.fs-product-has-compare-price")
         for card in product_cards:
             name_element = card.find_element(By.CSS_SELECTOR, "span.title.fs-product-title.fs-result-page-mihllj")
             set_element = card.find_element(By.CSS_SELECTOR, "div.vendor.fs-product-vendor")
@@ -80,14 +132,17 @@ def extract_lowest_price_and_set_from_page_401(driver, url, name):
                 if (lowest_price is None or numeric_price < lowest_price):
                     lowest_price = numeric_price
                     corresponding_set = set_text
-        return (lowest_price, corresponding_set)
+                    url_element = card.find_element(By.CSS_SELECTOR, "a.fs-product-main-image-wrapper ")
+                    corresponding_url = url_element.get_attribute('href')
+        return (lowest_price, corresponding_set, corresponding_url)
     except Exception as e:
         print(f"Error on page {url}: {e}")
-        return (lowest_price, corresponding_set)
+        return (lowest_price, corresponding_set, corresponding_url)
 
 def extract_lowest_price_and_set_from_page_fg(driver, url, name):
     lowest_price = None
     corresponding_set = None
+    corresponding_url = None
     try:
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
@@ -107,37 +162,18 @@ def extract_lowest_price_and_set_from_page_fg(driver, url, name):
                     if lowest_price is None or numeric_price < lowest_price:
                         lowest_price = numeric_price
                         corresponding_set = set_text
-        return (lowest_price, corresponding_set)
+                        url_element = card_element.find('a', href=True)
+                        url_link = url_element.get("href")
+                        corresponding_url = f"https://fusiongamingonline.com{url_link}"
+        return (lowest_price, corresponding_set, corresponding_url)
     except Exception as e:
         print(f"Error on page {url}: {e}")
-        return (lowest_price, corresponding_set)
+        return (lowest_price, corresponding_set, corresponding_url)
     
 def extract_lowest_price_and_set_from_page_firstplayer(driver, url, name):
     lowest_price = None
     corresponding_set = None
-    try:
-        html = driver.page_source
-        soup = BeautifulSoup(html, 'html.parser')
-        card_elements = soup.select('.variant-row.in-stock')
-        for card_element in card_elements:
-            form_element = card_element.find('form', class_='add-to-cart-form')
-            if form_element:
-                name_text = form_element.get('data-name', '').strip().lower()
-                price_text = form_element.get('data-price', '').strip().lower()
-                set_text = form_element.get('data-category', '').strip().lower()
-                if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
-                        numeric_price = float(re.sub(r'[^\d.]', '', price_text))
-                        if (lowest_price is None or numeric_price < lowest_price):
-                            lowest_price = numeric_price
-                            corresponding_set = set_text
-        return (lowest_price, corresponding_set)
-    except Exception as e:
-        print(f"Error on page {url}: {e}")
-        return (lowest_price, corresponding_set)
-
-def extract_lowest_price_and_set_from_page_comichunter(driver, url, name):
-    lowest_price = None
-    corresponding_set = None
+    corresponding_url = None
     try:
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
@@ -153,14 +189,45 @@ def extract_lowest_price_and_set_from_page_comichunter(driver, url, name):
                         if (lowest_price is None or numeric_price < lowest_price):
                             lowest_price = numeric_price
                             corresponding_set = set_text
-        return (lowest_price, corresponding_set)
+                            url_element = card_element.find('a', href=True)
+                            url_link = url_element.get("href")
+                            corresponding_url = f"https://www.firstplayer.ca{url_link}"
+        return (lowest_price, corresponding_set, corresponding_url)
     except Exception as e:
         print(f"Error on page {url}: {e}")
-        return (lowest_price, corresponding_set)
+        return (lowest_price, corresponding_set, corresponding_url)
+
+def extract_lowest_price_and_set_from_page_comichunter(driver, url, name):
+    lowest_price = None
+    corresponding_set = None
+    corresponding_url = None
+    try:
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        card_elements = soup.select('div.products-container li.product.enable-msrp')
+        for card_element in card_elements:
+            form_element = card_element.find('form', class_='add-to-cart-form')
+            if form_element:
+                name_text = form_element.get('data-name', '').strip().lower()
+                price_text = form_element.get('data-price', '').strip().lower()
+                set_text = form_element.get('data-category', '').strip().lower()
+                if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                        numeric_price = float(re.sub(r'[^\d.]', '', price_text))
+                        if (lowest_price is None or numeric_price < lowest_price):
+                            lowest_price = numeric_price
+                            corresponding_set = set_text
+                            url_element = card_element.find('a', href=True)
+                            url_link = url_element.get("href")
+                            corresponding_url = f"https://comichunter.crystalcommerce.com{url_link}"
+        return (lowest_price, corresponding_set, corresponding_url)
+    except Exception as e:
+        print(f"Error on page {url}: {e}")
+        return (lowest_price, corresponding_set, corresponding_url)
 
 def extract_lowest_price_and_set_from_page_fanofthesport(driver, url, name):
     lowest_price = None
     corresponding_set = None
+    corresponding_url = None
     try:
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
@@ -180,10 +247,13 @@ def extract_lowest_price_and_set_from_page_fanofthesport(driver, url, name):
                     if lowest_price is None or numeric_price < lowest_price:
                         lowest_price = numeric_price
                         corresponding_set = set_text
-        return (lowest_price, corresponding_set)
+                        url_element = card_element.find('a', href=True)
+                        url_link = url_element.get("href")
+                        corresponding_url = f"https://fanofthesport.com{url_link}"
+        return (lowest_price, corresponding_set, corresponding_url)
     except Exception as e:
         print(f"Error on page {url}: {e}")
-        return (lowest_price, corresponding_set)
+        return (lowest_price, corresponding_set, corresponding_url)
 
 # === URL Construction Functions ===
 def construct_url_f2f(card_name):
@@ -229,7 +299,6 @@ def read_card_names(csv_file):
                 card_names.append(row[0].replace('1 ', '').lower())
     return card_names
 
-
 def write_lowest_price(card_name, lowest_price, set_name, url, csv_file):
     with open(csv_file, mode='a', newline='') as file:
         writer = csv.writer(file)
@@ -237,51 +306,63 @@ def write_lowest_price(card_name, lowest_price, set_name, url, csv_file):
 
 # === Main Function ===
 def main():
+    initialize_database()
     cards_csv_file = 'card_names.csv'
     output_csv_file = 'card_lowest_prices.csv'
     card_names = read_card_names(cards_csv_file)
     sites = {
-        1: (construct_url_firstplayer, extract_lowest_price_and_set_from_page_firstplayer), #FirstPlayer
-        2: (construct_url_fanofthesport, extract_lowest_price_and_set_from_page_fanofthesport), #FanofTheSport
-        3: (construct_url_comichunter, extract_lowest_price_and_set_from_page_comichunter), #ComicHunter
-        4: (construct_url_f2f, extract_lowest_price_and_set_from_page_f2f), #FacetoFaceGames
-        5: (construct_url_fg, extract_lowest_price_and_set_from_page_fg), #FusionGaming
+        1: (construct_url_fanofthesport, extract_lowest_price_and_set_from_page_fanofthesport), #FanofTheSport
+        2: (construct_url_f2f, extract_lowest_price_and_set_from_page_f2f), #FacetoFaceGames
+        3: (construct_url_fg, extract_lowest_price_and_set_from_page_fg), #FusionGaming 
+        4: (construct_url_comichunter, extract_lowest_price_and_set_from_page_comichunter), #ComicHunter
+        5: (construct_url_firstplayer, extract_lowest_price_and_set_from_page_firstplayer), #FirstPlayer
         6: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401Games
     }
+    driver = webdriver.Chrome(options=options)
     with open(output_csv_file, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Card Name", "Lowest Price", "Set", "URL"])
-    driver = webdriver.Chrome(options=options)
-    for card_name in card_names:
-        lowest_price = None
-        corresponding_set = None
-        corresponding_url = None
-        handles = {}
-        for site, (construct_url, _) in sorted(sites.items(), reverse=True):
-            url = construct_url(card_name)
-            if not handles:
-                driver.get(url)
-                handles[site] = (driver.current_window_handle, url)
-            else:
-                driver.execute_script("window.open('');")
-                driver.switch_to.window(driver.window_handles[-1])
-                handles[site] = (driver.current_window_handle, url)
-                driver.get(url)
-        time.sleep(1.2)
-        for site, (_, extract_info) in sites.items():
-            driver.switch_to.window(handles[site][0])
-            price, set_name = extract_info(driver, handles[site][1], card_name)
-            if price is not None and (lowest_price is None or price < lowest_price):
-                lowest_price = price
-                corresponding_set = set_name
-                corresponding_url = handles[site][1]
-        print(f"{card_name}, {lowest_price}, {corresponding_url}")
-        write_lowest_price(card_name, lowest_price, corresponding_set, corresponding_url, output_csv_file)
-        for handle in list(handles.values())[:-1]:
-            driver.switch_to.window(handle[0])
-            driver.close()
-        driver.switch_to.window(driver.window_handles[-1])
-    driver.quit()
+    try:
+        connection = sqlite3.connect('card_prices.sqlite')
+        for card_name in card_names:
+            recent_card = card_exists_recently(connection, card_name)
+            if recent_card:
+                print(f"{card_name} already in database")
+                write_lowest_price(*recent_card, output_csv_file)
+                continue
+            lowest_price = None
+            corresponding_set = None
+            corresponding_url = None
+            handles = {}
+            for site, (construct_url, _) in sorted(sites.items(), reverse=True):
+                url = construct_url(card_name)
+                if not handles:
+                    driver.get(url)
+                    handles[site] = (driver.current_window_handle, url)
+                else:
+                    driver.execute_script("window.open('');")
+                    driver.switch_to.window(driver.window_handles[-1])
+                    handles[site] = (driver.current_window_handle, url)
+                    driver.get(url)
+            time.sleep(1)
+            for site, (_, extract_info) in sites.items():
+                driver.switch_to.window(handles[site][0])
+                price, set_name, url = extract_info(driver, handles[site][1], card_name)
+                if price is not None and (lowest_price is None or price < lowest_price):
+                    lowest_price = price
+                    corresponding_set = set_name
+                    corresponding_url = url
+            if lowest_price is not None:
+                insert_or_update_card_data(card_name, lowest_price, corresponding_set, corresponding_url)
+                write_lowest_price(card_name, lowest_price, corresponding_set, corresponding_url, output_csv_file)
+                print(f"{card_name}, {lowest_price}, {corresponding_url}")
+            for handle in list(handles.values())[:-1]:
+                driver.switch_to.window(handle[0])
+                driver.close()
+            driver.switch_to.window(driver.window_handles[-1])
+    finally:
+        driver.quit()
+        connection.close()
     
 if __name__ == '__main__':
     main()
