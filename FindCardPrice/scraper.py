@@ -315,8 +315,14 @@ def extract_lowest_price_and_set_from_page_trinityhobby(driver, url, name):
             price_element = card_element.select_one("div.usf-price-wrapper span.usf-price span.money")
             if not name_element or not price_element:
                 continue
-            name_text = name_element.text[:len(name)].strip().lower()
-            set_text = name_element.text[len(name):].strip().lower()
+            full_text = name_element.text
+            if "[" in full_text and "]" in full_text:
+                set_text = full_text[full_text.index("[") + 1:full_text.index("]")].strip().lower()
+                name_part = full_text[:full_text.index("[")].strip()
+                name_text = name_part.split("(")[0].strip().lower()
+            else:
+                name_text = full_text.strip().lower()
+                set_text = None
             price_text = price_element.text.strip()
             if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
@@ -326,6 +332,40 @@ def extract_lowest_price_and_set_from_page_trinityhobby(driver, url, name):
                         url_element = card_element.find('a', href=True)
                         url_link = url_element.get("href")
                         corresponding_url = f"https://trinityhobby.com{url_link}"
+        return (lowest_price, corresponding_set, corresponding_url)
+    except Exception as e:
+        print(f"Error on page {url}: {e}")
+        return (lowest_price, corresponding_set, corresponding_url)
+
+def extract_lowest_price_and_set_from_page_legendarycollectables(driver, url, name):
+    lowest_price = None
+    corresponding_set = None
+    corresponding_url = None
+    try:
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        card_elements = soup.select('div.productgrid--items div.productgrid--item')
+        for card_element in card_elements:
+            name_element = card_element.select_one("h2.productitem--title a")
+            price_element = card_element.select_one("div.price__current span.money[data-price-max]")
+            if not name_element or not price_element:
+                continue
+            full_text = name_element.text
+            if "[" in full_text and "]" in full_text:
+                set_text = full_text[full_text.index("[") + 1:full_text.index("]")].strip().lower()
+                name_part = full_text[:full_text.index("[")].strip()
+                name_text = name_part.split("(")[0].strip().lower()
+            else:
+                name_text = full_text.strip().lower()
+                set_text = None
+            price_text = price_element.text.strip()
+            if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                    numeric_price = float(re.sub(r'[^\d.]', '', price_text))
+                    if lowest_price is None or numeric_price < lowest_price:
+                        lowest_price = numeric_price
+                        corresponding_set = set_text
+                        url_link = name_element.get("href")
+                        corresponding_url = f"https://legendarycollectables.com{url_link}"
         return (lowest_price, corresponding_set, corresponding_url)
     except Exception as e:
         print(f"Error on page {url}: {e}")
@@ -375,6 +415,11 @@ def construct_url_trinityhobby(card_name):
         '/', '%2F').replace("'", '%27').replace(',', '%2C').replace(' ', '%20')
     return f"{base_url}{formatted_name}&uff_68z6r3_stockStatus=1&uff_ej1dei_vendor=Magic%3A%20The%20Gathering&uff_tdso15_productType=MTG%20Single&usf_sort=price"
 
+def construct_url_legendarycollectables(card_name):
+    base_url = "https://legendarycollectables.com/search?filter.v.availability=1&q="
+    formatted_name = card_name.replace("'", '%27').replace(',', '%2C').replace(' ', '+')
+    return f"{base_url}{formatted_name}"
+
 # === CSV Functions ===
 def read_card_names(csv_file):
     card_names = []
@@ -408,9 +453,10 @@ def main():
         3: (construct_url_fg, extract_lowest_price_and_set_from_page_fg), #FusionGaming 
         4: (construct_url_comichunter, extract_lowest_price_and_set_from_page_comichunter), #ComicHunter
         5: (construct_url_gauntletgames, extract_lowest_price_and_set_from_page_gauntletgames), #GauntletGames
-        6: (construct_url_trinityhobby, extract_lowest_price_and_set_from_page_trinityhobby), #TrinityHobby
-        7: (construct_url_firstplayer, extract_lowest_price_and_set_from_page_firstplayer), #FirstPlayer
-        8: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401Games
+        6: (construct_url_legendarycollectables, extract_lowest_price_and_set_from_page_legendarycollectables), #LegendaryCollectables
+        7: (construct_url_trinityhobby, extract_lowest_price_and_set_from_page_trinityhobby), #TrinityHobby
+        8: (construct_url_firstplayer, extract_lowest_price_and_set_from_page_firstplayer), #FirstPlayer
+        9: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401Games
     }
     with open(output_csv_file, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -437,7 +483,7 @@ def main():
                     driver.switch_to.window(driver.window_handles[-1])
                     handles[site] = (driver.current_window_handle, url)
                     driver.get(url)
-            time.sleep(1.2)
+            time.sleep(1)
             for site, (_, extract_info) in sites.items():
                 driver.switch_to.window(handles[site][0])
                 price, set_name, url = extract_info(driver, handles[site][1], card_name)
