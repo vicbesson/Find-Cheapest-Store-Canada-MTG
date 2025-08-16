@@ -124,7 +124,7 @@ def extract_lowest_price_and_set_from_page_401(driver, url, name):
             EC.presence_of_element_located((By.CSS_SELECTOR, "div#fast-simon-serp-app"))
         )
         shadow_root = driver.execute_script('return arguments[0].shadowRoot', shadow_host)
-        card_elements = shadow_root.find_elements(By.CSS_SELECTOR, "div.product-card.fs-results-product-card.fs-product-card.fs-result-page-nxn4j1.product-card-border-hover.fs-product-has-compare-price")
+        card_elements = shadow_root.find_elements(By.CSS_SELECTOR, "div.product-card.fs-results-product-card.fs-product-card")
         for card_element in card_elements:
             name_element = card_element.find_element(By.CSS_SELECTOR, "span.title.fs-product-title.fs-result-page-mihllj")
             set_element = card_element.find_element(By.CSS_SELECTOR, "div.vendor.fs-product-vendor")
@@ -312,7 +312,7 @@ def extract_lowest_price_and_set_from_page_trinityhobby(driver, url, name):
         card_elements = soup.select('div.usf-results.usf-clear.usf-grid div.usf-sr-product.usf-grid__item')
         for card_element in card_elements:
             name_element = card_element.select_one("div.usf-title a")
-            price_element = card_element.select_one("div.usf-price-wrapper span.usf-price span.money")
+            price_element = card_element.select_one("div.usf-price-wrapper span.usf-price")
             if not name_element or not price_element:
                 continue
             full_text = name_element.text
@@ -487,6 +487,7 @@ def main():
             for site, (_, extract_info) in sites.items():
                 driver.switch_to.window(handles[site][0])
                 price, set_name, url = extract_info(driver, handles[site][1], card_name)
+                print(f"INFO:{card_name}, {price}, {url}")
                 if price is not None and (lowest_price is None or price < lowest_price):
                     lowest_price = price
                     corresponding_set = set_name
