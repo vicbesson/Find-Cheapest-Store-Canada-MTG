@@ -370,7 +370,44 @@ def extract_lowest_price_and_set_from_page_legendarycollectables(driver, url, na
     except Exception as e:
         print(f"Error on page {url}: {e}")
         return (lowest_price, corresponding_set, corresponding_url)
-    
+
+def extract_lowest_price_and_set_from_page_enterthebattlefield(driver, url, name):
+    lowest_price = None
+    corresponding_set = None
+    corresponding_url = None
+    try:
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        card_elements = soup.select('div.A063B6ZViYqgsXyny01q.store-pass-products-section div.IL_9re51r_nU3W5N9bqO.store-pass-product')
+        for card_element in card_elements:
+            in_stock = card_element.select_one('select.store-pass-product-select option[selected]')
+            if in_stock:
+                if in_stock.text != 'Near Mint - Out of Stock' and in_stock.text != 'Near Mint Foil - Out of Stock': 
+                    name_element = card_element.select_one("div.oDG36jUoNf9rmBH7Od6q.store-pass-product-title a")
+                    price_element = card_element.select_one("div.zxgfl39yAQIEHsoCexnN.store-pass-product-price")
+                    if not name_element or not price_element:
+                        continue
+                    full_text = name_element.text
+                    pattern = r'(.*?)\s+\([^-)]+-[^)]+\)\s+-\s+(.*)'
+                    match = re.search(pattern, full_text)
+                    if match:
+                        name_text = match.group(1).strip().lower()
+                        set_text = match.group(2).strip().lower()
+                        price_text = price_element.text.strip()
+                        if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                                numeric_price = float(re.sub(r'[^\d.]', '', price_text))
+                                if lowest_price is None or numeric_price < lowest_price:
+                                    lowest_price = numeric_price
+                                    corresponding_set = set_text
+                                    url_element = card_element.select_one("div.Ksk2NyPedcf56oLsJ5RG.store-pass-product-image-container a")
+                                    url_link = url_element.get("href")
+                                    corresponding_url = f"https://enterthebattlefield.ca{url_link}"
+        return (lowest_price, corresponding_set, corresponding_url)
+    except Exception as e:
+        print(f"Error on page {url}: {e}")
+        return (lowest_price, corresponding_set, corresponding_url)
+
+
 # === URL Construction Functions ===
 def construct_url_f2f(card_name):
     base_url = "https://facetofacegames.com/search?q="
@@ -420,6 +457,11 @@ def construct_url_legendarycollectables(card_name):
     formatted_name = card_name.replace("'", '%27').replace(',', '%2C').replace(' ', '+')
     return f"{base_url}{formatted_name}"
 
+def construct_url_enterthebattlefield(card_name):
+    base_url = "https://enterthebattlefield.ca/search?product_line=All&sort=Relevance&limit=30&name="
+    formatted_name = card_name.replace("'", '%27').replace(',', '%2C').replace(' ', '+')
+    return f"{base_url}{formatted_name}&q={formatted_name}"
+
 # === CSV Functions ===
 def read_card_names(csv_file):
     card_names = []
@@ -456,7 +498,8 @@ def main():
         6: (construct_url_legendarycollectables, extract_lowest_price_and_set_from_page_legendarycollectables), #LegendaryCollectables
         7: (construct_url_trinityhobby, extract_lowest_price_and_set_from_page_trinityhobby), #TrinityHobby
         8: (construct_url_firstplayer, extract_lowest_price_and_set_from_page_firstplayer), #FirstPlayer
-        9: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401Games
+        9: (construct_url_enterthebattlefield, extract_lowest_price_and_set_from_page_enterthebattlefield), #EnterTheBattlefield
+        10: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401Games
     }
     with open(output_csv_file, mode='w', newline='') as file:
         writer = csv.writer(file)
