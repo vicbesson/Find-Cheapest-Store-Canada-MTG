@@ -103,7 +103,7 @@ def extract_lowest_price_and_set_from_page_f2f(driver, url, name):
             name_text = name_element.text.strip().lower()
             set_text = set_element.text.strip().lower()
             price_text = price_element.text.strip()
-            if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+            if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                     if (lowest_price is None or numeric_price < lowest_price):
                         lowest_price = numeric_price
@@ -132,7 +132,7 @@ def extract_lowest_price_and_set_from_page_401(driver, url, name):
             name_text = name_element.get_attribute('aria-label').strip().lower()
             set_text = set_element.text.strip().lower()
             price_text = price_element.text.strip()
-            if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+            if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                 numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                 if (lowest_price is None or numeric_price < lowest_price):
                     lowest_price = numeric_price
@@ -162,7 +162,7 @@ def extract_lowest_price_and_set_from_page_fg(driver, url, name):
                 price_text = price_element.text.strip()
                 set_text = set_element.text.strip().lower()
                 name_text = name_element.text.strip().lower()
-                if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                         numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                         if lowest_price is None or numeric_price < lowest_price:
                             lowest_price = numeric_price
@@ -192,7 +192,7 @@ def extract_lowest_price_and_set_from_page_firstplayer(driver, url, name):
                     name_text = form_element.get('data-name', '').strip().lower()
                     price_text = form_element.get('data-price', '').strip()
                     set_text = form_element.get('data-category', '').strip().lower()
-                    if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                    if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                             numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                             if (lowest_price is None or numeric_price < lowest_price):
                                 corresponding_url = f"https://www.firstplayer.ca{url_link}"
@@ -220,7 +220,7 @@ def extract_lowest_price_and_set_from_page_comichunter(driver, url, name):
                     name_text = form_element.get('data-name', '').strip().lower()
                     price_text = form_element.get('data-price', '').strip()
                     set_text = form_element.get('data-category', '').strip().lower()
-                    if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                    if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                             numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                             if (lowest_price is None or numeric_price < lowest_price):
                                 corresponding_url = f"https://comichunter.crystalcommerce.com{url_link}"
@@ -251,7 +251,7 @@ def extract_lowest_price_and_set_from_page_gauntletgames(driver, url, name):
                         name_text = form_element.get('data-name', '').strip().lower()
                         price_text = form_element.get('data-price', '').strip()
                         set_text = form_element.get('data-category', '').strip().lower()
-                        if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                        if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                                 numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                                 if (lowest_price is None or numeric_price < lowest_price):
                                     corresponding_url = f"https://www.gauntletgamesvictoria.ca{url_link}"
@@ -280,7 +280,7 @@ def extract_lowest_price_and_set_from_page_fanofthesport(driver, url, name):
                 price_text = price_element.text.strip()
                 set_text = set_element.text.strip().lower()
                 name_text = name_element.text.strip().lower()
-                if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                         numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                         if lowest_price is None or numeric_price < lowest_price:
                             lowest_price = numeric_price
@@ -324,7 +324,7 @@ def extract_lowest_price_and_set_from_page_trinityhobby(driver, url, name):
                 name_text = full_text.strip().lower()
                 set_text = None
             price_text = price_element.text.strip()
-            if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+            if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                     if lowest_price is None or numeric_price < lowest_price:
                         lowest_price = numeric_price
@@ -359,7 +359,7 @@ def extract_lowest_price_and_set_from_page_legendarycollectables(driver, url, na
                 name_text = full_text.strip().lower()
                 set_text = None
             price_text = price_element.text.strip()
-            if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+            if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                     if lowest_price is None or numeric_price < lowest_price:
                         lowest_price = numeric_price
@@ -394,7 +394,7 @@ def extract_lowest_price_and_set_from_page_enterthebattlefield(driver, url, name
                         name_text = match.group(1).strip().lower()
                         set_text = match.group(2).strip().lower()
                         price_text = price_element.text.strip()
-                        if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]|$)", name_text))):
+                        if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
                                 numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                                 if lowest_price is None or numeric_price < lowest_price:
                                     lowest_price = numeric_price
