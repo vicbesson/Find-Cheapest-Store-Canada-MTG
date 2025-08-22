@@ -2,7 +2,7 @@
 """
 Created on Thu Mar  6 13:32:09 2025
 
-@author: Victor
+@author: Victor Besson
 """
 import csv
 import re
@@ -38,7 +38,7 @@ prefs = {'profile.default_content_setting_values': {'images': 2,
                             'durable_storage': 2}}
 options.add_experimental_option("prefs", prefs)
 options.page_load_strategy = 'none'
-options.add_argument("--headless");
+options.add_argument("--headless") #Comment out this line if you want to see visually what is happening.
 options.add_argument("disable-infobars")
 options.add_argument("--disable-extensions")
 
@@ -489,6 +489,7 @@ def main():
     cards_csv_file = 'card_names.csv'
     output_csv_file = 'card_lowest_prices.csv'
     card_names = read_card_names(cards_csv_file)
+    #If a site is currently down the program will timeout, in that case comment out the site not working in question below:
     sites = {
         1: (construct_url_fanofthesport, extract_lowest_price_and_set_from_page_fanofthesport), #FanofTheSport
         2: (construct_url_f2f, extract_lowest_price_and_set_from_page_f2f), #FacetoFaceGames
