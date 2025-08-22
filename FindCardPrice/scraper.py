@@ -38,7 +38,7 @@ prefs = {'profile.default_content_setting_values': {'images': 2,
                             'durable_storage': 2}}
 options.add_experimental_option("prefs", prefs)
 options.page_load_strategy = 'none'
-options.add_argument("--headless") #Comment out this line if you want to see visually what is happening.
+options.add_argument("--headless") #Comment out this line if you want to see visually what is happening. (add '#' at start of the line)
 options.add_argument("disable-infobars")
 options.add_argument("--disable-extensions")
 
@@ -103,7 +103,7 @@ def extract_lowest_price_and_set_from_page_f2f(driver, url, name):
             name_text = name_element.text.strip().lower()
             set_text = set_element.text.strip().lower()
             price_text = price_element.text.strip()
-            if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+            if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                     if (lowest_price is None or numeric_price < lowest_price):
                         lowest_price = numeric_price
@@ -132,7 +132,7 @@ def extract_lowest_price_and_set_from_page_401(driver, url, name):
             name_text = name_element.get_attribute('aria-label').strip().lower()
             set_text = set_element.text.strip().lower()
             price_text = price_element.text.strip()
-            if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+            if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                 numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                 if (lowest_price is None or numeric_price < lowest_price):
                     lowest_price = numeric_price
@@ -162,7 +162,7 @@ def extract_lowest_price_and_set_from_page_fg(driver, url, name):
                 price_text = price_element.text.strip()
                 set_text = set_element.text.strip().lower()
                 name_text = name_element.text.strip().lower()
-                if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+                if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                         numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                         if lowest_price is None or numeric_price < lowest_price:
                             lowest_price = numeric_price
@@ -192,7 +192,7 @@ def extract_lowest_price_and_set_from_page_firstplayer(driver, url, name):
                     name_text = form_element.get('data-name', '').strip().lower()
                     price_text = form_element.get('data-price', '').strip()
                     set_text = form_element.get('data-category', '').strip().lower()
-                    if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+                    if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                             numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                             if (lowest_price is None or numeric_price < lowest_price):
                                 corresponding_url = f"https://www.firstplayer.ca{url_link}"
@@ -220,7 +220,7 @@ def extract_lowest_price_and_set_from_page_comichunter(driver, url, name):
                     name_text = form_element.get('data-name', '').strip().lower()
                     price_text = form_element.get('data-price', '').strip()
                     set_text = form_element.get('data-category', '').strip().lower()
-                    if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+                    if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                             numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                             if (lowest_price is None or numeric_price < lowest_price):
                                 corresponding_url = f"https://comichunter.crystalcommerce.com{url_link}"
@@ -251,7 +251,7 @@ def extract_lowest_price_and_set_from_page_gauntletgames(driver, url, name):
                         name_text = form_element.get('data-name', '').strip().lower()
                         price_text = form_element.get('data-price', '').strip()
                         set_text = form_element.get('data-category', '').strip().lower()
-                        if (price_text and "art series" not in set_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+                        if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                                 numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                                 if (lowest_price is None or numeric_price < lowest_price):
                                     corresponding_url = f"https://www.gauntletgamesvictoria.ca{url_link}"
@@ -280,7 +280,7 @@ def extract_lowest_price_and_set_from_page_fanofthesport(driver, url, name):
                 price_text = price_element.text.strip()
                 set_text = set_element.text.strip().lower()
                 name_text = name_element.text.strip().lower()
-                if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+                if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                         numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                         if lowest_price is None or numeric_price < lowest_price:
                             lowest_price = numeric_price
@@ -324,7 +324,7 @@ def extract_lowest_price_and_set_from_page_trinityhobby(driver, url, name):
                 name_text = full_text.strip().lower()
                 set_text = None
             price_text = price_element.text.strip()
-            if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+            if (price_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                     if lowest_price is None or numeric_price < lowest_price:
                         lowest_price = numeric_price
@@ -351,15 +351,11 @@ def extract_lowest_price_and_set_from_page_legendarycollectables(driver, url, na
             if not name_element or not price_element:
                 continue
             full_text = name_element.text
-            if "[" in full_text and "]" in full_text:
-                set_text = full_text[full_text.index("[") + 1:full_text.index("]")].strip().lower()
-                name_part = full_text[:full_text.index("[")].strip()
-                name_text = name_part.split("(")[0].strip().lower()
-            else:
-                name_text = full_text.strip().lower()
-                set_text = None
+            set_text = full_text[full_text.index("[") + 1:full_text.index("]")].strip().lower()
+            name_part = full_text[:full_text.index("[")].strip()
+            name_text = name_part.split("(")[0].strip().lower()
             price_text = price_element.text.strip()
-            if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+            if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                     if lowest_price is None or numeric_price < lowest_price:
                         lowest_price = numeric_price
@@ -394,7 +390,7 @@ def extract_lowest_price_and_set_from_page_enterthebattlefield(driver, url, name
                         name_text = match.group(1).strip().lower()
                         set_text = match.group(2).strip().lower()
                         price_text = price_element.text.strip()
-                        if (price_text and (name_text == name or re.match(rf"^{re.escape(name)}(?:\s[-(]| // |$)", name_text))):
+                        if (price_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
                                 numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                                 if lowest_price is None or numeric_price < lowest_price:
                                     lowest_price = numeric_price
@@ -489,7 +485,7 @@ def main():
     cards_csv_file = 'card_names.csv'
     output_csv_file = 'card_lowest_prices.csv'
     card_names = read_card_names(cards_csv_file)
-    #If a site is currently down the program will timeout, in that case comment out the site not working in question below:
+    #If a site is currently down the program will timeout, in that case comment out the site not working in question below (add '#' at start of the line):
     sites = {
         1: (construct_url_fanofthesport, extract_lowest_price_and_set_from_page_fanofthesport), #FanofTheSport
         2: (construct_url_f2f, extract_lowest_price_and_set_from_page_f2f), #FacetoFaceGames
@@ -531,7 +527,8 @@ def main():
             for site, (_, extract_info) in sites.items():
                 driver.switch_to.window(handles[site][0])
                 price, set_name, url = extract_info(driver, handles[site][1], card_name)
-                print(f"INFO:{card_name}, {price}, {url}")
+                if price is not None:
+                    print(f"INFO:{card_name}, {price}, {url}")
                 if price is not None and (lowest_price is None or price < lowest_price):
                     lowest_price = price
                     corresponding_set = set_name
@@ -539,7 +536,9 @@ def main():
             if lowest_price is not None:
                 insert_or_update_card_data(card_name, lowest_price, corresponding_set, corresponding_url)
                 write_lowest_price(card_name, lowest_price, corresponding_set, corresponding_url, output_csv_file)
-                print(f"{card_name}, {lowest_price}, {corresponding_url}")
+                GREEN = '\033[32m'
+                RESET = '\033[0m'
+                print(f"{GREEN}{card_name}, {lowest_price}, {corresponding_url}{RESET}")
             for handle in list(handles.values())[:-1]:
                 driver.switch_to.window(handle[0])
                 driver.close()
