@@ -24,6 +24,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from bs4 import BeautifulSoup
 
 options = webdriver.ChromeOptions()
@@ -53,12 +54,13 @@ def initialize_database():
                 lowest_price REAL NOT NULL,
                 card_set TEXT NOT NULL,
                 url TEXT NOT NULL,
+                pricediff_from_next REAL DEFAULT 0,
                 date_added DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         connection.commit()
 
-def insert_or_update_card_data(card_name, lowest_price, card_set, url):
+def insert_or_update_card_data(card_name, lowest_price, card_set, url, discount):
     with sqlite3.connect('card_prices.sqlite') as connection:
         cursor = connection.cursor()
         cursor.execute('''
@@ -69,20 +71,20 @@ def insert_or_update_card_data(card_name, lowest_price, card_set, url):
         if result:
             cursor.execute('''
                 UPDATE cards
-                SET lowest_price = ?, card_set = ?, url = ?, date_added = CURRENT_TIMESTAMP
+                SET lowest_price = ?, card_set = ?, url = ?, pricediff_from_next = ?, date_added = CURRENT_TIMESTAMP
                 WHERE id = ?
-            ''', (lowest_price, card_set, url, result[0]))
+            ''', (lowest_price, card_set, url, discount, result[0]))
         else:
             cursor.execute('''
-                INSERT INTO cards (card_name, lowest_price, card_set, url)
-                VALUES (?, ?, ?, ?)
-            ''', (card_name, lowest_price, card_set, url))
+                INSERT INTO cards (card_name, lowest_price, card_set, url, pricediff_from_next)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (card_name, lowest_price, card_set, url, discount))
         connection.commit()
 
 def card_exists_recently(connection, card_name):
     cursor = connection.cursor()
     cursor.execute('''
-        SELECT card_name, lowest_price, card_set, url
+        SELECT card_name, lowest_price, card_set, url, pricediff_from_next
         FROM cards
         WHERE card_name = ? AND date_added >= DATETIME('now', '-1 day')
     ''', (card_name,))
@@ -132,7 +134,9 @@ def extract_lowest_price_and_set_from_page_401(driver, url, name):
             name_text = name_element.get_attribute('aria-label').strip().lower()
             set_text = set_element.text.strip().lower()
             price_text = price_element.text.strip()
-            if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
+            if not re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text):
+                break
+            if price_text and "art series" not in set_text and "world championship decks" not in set_text:
                 numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                 if (lowest_price is None or numeric_price < lowest_price):
                     lowest_price = numeric_price
@@ -162,7 +166,9 @@ def extract_lowest_price_and_set_from_page_fg(driver, url, name):
                 price_text = price_element.text.strip()
                 set_text = set_element.text.strip().lower()
                 name_text = name_element.text.strip().lower()
-                if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
+                if not re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text):
+                    break
+                if price_text and "art series" not in set_text and "world championship decks" not in set_text:
                         numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                         if lowest_price is None or numeric_price < lowest_price:
                             lowest_price = numeric_price
@@ -271,23 +277,26 @@ def extract_lowest_price_and_set_from_page_fanofthesport(driver, url, name):
         soup = BeautifulSoup(html, 'html.parser')
         card_elements = soup.select('div.collectionGrid div.productCard__card[data-producttype="MTG Single"]')
         for card_element in card_elements:
-            if not card_element.select(".productCard__button--outOfStock"):
-                set_element = card_element.select_one("div.productCard__lower p.productCard__setName")
-                name_element = card_element.select_one("div.productCard__lower p.productCard__title")
-                price_element = card_element.select_one("div.productCard__lower p.productCard__price")
-                if not set_element or not name_element or not price_element:
-                    continue
-                price_text = price_element.text.strip()
-                set_text = set_element.text.strip().lower()
-                name_text = name_element.text.strip().lower()
-                if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
-                        numeric_price = float(re.sub(r'[^\d.]', '', price_text))
-                        if lowest_price is None or numeric_price < lowest_price:
-                            lowest_price = numeric_price
-                            corresponding_set = set_text
-                            url_element = card_element.find('a', href=True)
-                            url_link = url_element.get("href")
-                            corresponding_url = f"https://fanofthesport.com{url_link}"
+            if card_element.select(".productCard__button--outOfStock"):
+                break
+            set_element = card_element.select_one("div.productCard__lower p.productCard__setName")
+            name_element = card_element.select_one("div.productCard__lower p.productCard__title")
+            price_element = card_element.select_one("div.productCard__lower p.productCard__price")
+            if not set_element or not name_element or not price_element:
+                continue
+            price_text = price_element.text.strip()
+            set_text = set_element.text.strip().lower()
+            name_text = name_element.text.strip().lower()
+            if not re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text):
+                break
+            if price_text and "art series" not in set_text and "world championship decks" not in set_text:
+                    numeric_price = float(re.sub(r'[^\d.]', '', price_text))
+                    if lowest_price is None or numeric_price < lowest_price:
+                        lowest_price = numeric_price
+                        corresponding_set = set_text
+                        url_element = card_element.find('a', href=True)
+                        url_link = url_element.get("href")
+                        corresponding_url = f"https://fanofthesport.com{url_link}"
         return (lowest_price, corresponding_set, corresponding_url)
     except Exception as e:
         print(f"Error on page {url}: {e}")
@@ -332,6 +341,8 @@ def extract_lowest_price_and_set_from_page_trinityhobby(driver, url, name):
                         url_element = card_element.find('a', href=True)
                         url_link = url_element.get("href")
                         corresponding_url = f"https://trinityhobby.com{url_link}"
+                    else:
+                        break
         return (lowest_price, corresponding_set, corresponding_url)
     except Exception as e:
         print(f"Error on page {url}: {e}")
@@ -342,26 +353,41 @@ def extract_lowest_price_and_set_from_page_legendarycollectables(driver, url, na
     corresponding_set = None
     corresponding_url = None
     try:
-        html = driver.page_source
-        soup = BeautifulSoup(html, 'html.parser')
-        card_elements = soup.select('div.productgrid--items div.productgrid--item')
+        card_elements = driver.find_elements(By.CSS_SELECTOR, "div.productgrid--items div.productgrid--item")
         for card_element in card_elements:
-            name_element = card_element.select_one("h2.productitem--title a")
-            price_element = card_element.select_one("div.price__current span.money[data-price-max]")
-            if not name_element or not price_element:
+            name_element = card_element.find_element(By.CSS_SELECTOR, "h2.productitem--title a")
+            if not name_element:
                 continue
             full_text = name_element.text
             set_text = full_text[full_text.index("[") + 1:full_text.index("]")].strip().lower()
             name_part = full_text[:full_text.index("[")].strip()
             name_text = name_part.split("(")[0].strip().lower()
-            price_text = price_element.text.strip()
-            if (price_text and "art series" not in set_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
+            if not re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text):
+                break
+            if "art series" not in set_text and "world championship decks" not in set_text:
+                    actions = ActionChains(driver)
+                    actions.move_to_element(card_element).perform()
+                    button = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "button.productitem--action-trigger.productitem--action-atc.button-primary"))
+                    )
+                    if button:
+                        button.click()
+                        detail_div = WebDriverWait(driver, 5).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "div.product-main"))
+                        )
+                        if detail_div:
+                            price_element = detail_div.find_element(By.CSS_SELECTOR, "div.price__current span.money")
+                            price_text = price_element.text.strip()
+                            close_button = WebDriverWait(driver, 5).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, "button.modal-close"))
+                            )
+                            if close_button:
+                                close_button.click()
                     numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                     if lowest_price is None or numeric_price < lowest_price:
                         lowest_price = numeric_price
                         corresponding_set = set_text
-                        url_link = name_element.get("href")
-                        corresponding_url = f"https://legendarycollectables.com{url_link}"
+                        corresponding_url = name_element.get_attribute('href')
         return (lowest_price, corresponding_set, corresponding_url)
     except Exception as e:
         print(f"Error on page {url}: {e}")
@@ -390,7 +416,9 @@ def extract_lowest_price_and_set_from_page_enterthebattlefield(driver, url, name
                         name_text = match.group(1).strip().lower()
                         set_text = match.group(2).strip().lower()
                         price_text = price_element.text.strip()
-                        if (price_text and "world championship decks" not in set_text and (name_text == name or re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text))):
+                        if not re.match(rf"(?:^| - | // |[)]|[)] ){re.escape(name)}(?=$| - | // |[(]| [(])", name_text):
+                            break
+                        if "art series" not in set_text and "world championship decks" not in set_text:
                                 numeric_price = float(re.sub(r'[^\d.]', '', price_text))
                                 if lowest_price is None or numeric_price < lowest_price:
                                     lowest_price = numeric_price
@@ -408,7 +436,7 @@ def extract_lowest_price_and_set_from_page_enterthebattlefield(driver, url, name
 def construct_url_f2f(card_name):
     base_url = "https://facetofacegames.com/search?q="
     formatted_name = card_name.replace("'", '%27').replace(',', '%2C').replace(' ', '+')
-    return f"{base_url}{formatted_name}&filter__Product+Type=Singles&filter__Game=Magic%3A+The+Gathering&filter__Availability=In+Stock&sort_by=best"
+    return f"{base_url}{formatted_name}&filter__Availability=In+Stock&filter__Game=Magic%3A+The+Gathering&sort_by=price_asc"
 
 def construct_url_fg(card_name):
     base_url = "https://fusiongamingonline.com/search?page=1&q=%2A"
@@ -449,12 +477,12 @@ def construct_url_trinityhobby(card_name):
     return f"{base_url}{formatted_name}&uff_68z6r3_stockStatus=1&uff_ej1dei_vendor=Magic%3A%20The%20Gathering&uff_tdso15_productType=MTG%20Single&usf_sort=price"
 
 def construct_url_legendarycollectables(card_name):
-    base_url = "https://legendarycollectables.com/search?filter.v.availability=1&q="
+    base_url = "https://legendarycollectables.com/search?filter.v.availability=1&q=product_type%3AMTG+Single+AND+"
     formatted_name = card_name.replace("'", '%27').replace(',', '%2C').replace(' ', '+')
     return f"{base_url}{formatted_name}"
 
 def construct_url_enterthebattlefield(card_name):
-    base_url = "https://enterthebattlefield.ca/search?product_line=All&sort=Relevance&limit=30&name="
+    base_url = "https://enterthebattlefield.ca/search?product_line=All&sort=Price%3A+Low-High&limit=100&name="
     formatted_name = card_name.replace("'", '%27').replace(',', '%2C').replace(' ', '+')
     return f"{base_url}{formatted_name}&q={formatted_name}"
 
@@ -473,10 +501,10 @@ def read_card_names(csv_file):
                 card_names.append(row[0].lower())
     return card_names
 
-def write_lowest_price(card_name, lowest_price, set_name, url, csv_file):
+def write_lowest_price(card_name, lowest_price, set_name, url, discount, csv_file):
     with open(csv_file, mode='a', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow([card_name, lowest_price, set_name, url])
+        writer.writerow([card_name, lowest_price, set_name, url, discount])
 
 # === Main Function ===
 def main():
@@ -487,20 +515,20 @@ def main():
     card_names = read_card_names(cards_csv_file)
     #If a site is currently down the program will timeout, in that case comment out the site not working in question below (add '#' at start of the line):
     sites = {
-        1: (construct_url_fanofthesport, extract_lowest_price_and_set_from_page_fanofthesport), #FanofTheSport
-        2: (construct_url_f2f, extract_lowest_price_and_set_from_page_f2f), #FacetoFaceGames
-        3: (construct_url_fg, extract_lowest_price_and_set_from_page_fg), #FusionGaming 
-        4: (construct_url_comichunter, extract_lowest_price_and_set_from_page_comichunter), #ComicHunter
-        5: (construct_url_gauntletgames, extract_lowest_price_and_set_from_page_gauntletgames), #GauntletGames
-        6: (construct_url_legendarycollectables, extract_lowest_price_and_set_from_page_legendarycollectables), #LegendaryCollectables
-        7: (construct_url_trinityhobby, extract_lowest_price_and_set_from_page_trinityhobby), #TrinityHobby
-        8: (construct_url_firstplayer, extract_lowest_price_and_set_from_page_firstplayer), #FirstPlayer
-        9: (construct_url_enterthebattlefield, extract_lowest_price_and_set_from_page_enterthebattlefield), #EnterTheBattlefield
-        10: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401Games
+        1: (construct_url_fanofthesport, extract_lowest_price_and_set_from_page_fanofthesport), #FanofTheSport $5 shipping
+        2: (construct_url_f2f, extract_lowest_price_and_set_from_page_f2f), #FacetoFaceGames $2.61 shipping Free over $200
+        3: (construct_url_fg, extract_lowest_price_and_set_from_page_fg), #FusionGaming $2.99 shipping
+        4: (construct_url_comichunter, extract_lowest_price_and_set_from_page_comichunter), #ComicHunter $2.49 shipping Free over $50
+        5: (construct_url_gauntletgames, extract_lowest_price_and_set_from_page_gauntletgames), #GauntletGames $3.05 shipping
+        6: (construct_url_legendarycollectables, extract_lowest_price_and_set_from_page_legendarycollectables), #LegendaryCollectables $3.99 shipping
+        7: (construct_url_trinityhobby, extract_lowest_price_and_set_from_page_trinityhobby), #TrinityHobby $3 shipping Free over $300
+        8: (construct_url_firstplayer, extract_lowest_price_and_set_from_page_firstplayer), #FirstPlayer $3 shipping Free over $75
+        9: (construct_url_enterthebattlefield, extract_lowest_price_and_set_from_page_enterthebattlefield), #EnterTheBattlefield $4 shipping
+        10: (construct_url_401, extract_lowest_price_and_set_from_page_401) #401 Games, $10.95 shipping Free over $100
     }
     with open(output_csv_file, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["Card Name", "Lowest Price", "Set", "URL"])
+        writer.writerow(["Card Name", "Lowest Price", "Set", "URL", "Diff"])
     try:
         connection = sqlite3.connect('card_prices.sqlite')
         for card_name in card_names:
@@ -509,9 +537,8 @@ def main():
                 print(f"{card_name} already in database")
                 write_lowest_price(*recent_card, output_csv_file)
                 continue
-            lowest_price = None
-            corresponding_set = None
-            corresponding_url = None
+            cheapest = None
+            second_cheapest = None
             handles = {}
             for site, (construct_url, _) in sorted(sites.items(), reverse=True):
                 url = construct_url(card_name)
@@ -527,18 +554,25 @@ def main():
             for site, (_, extract_info) in sites.items():
                 driver.switch_to.window(handles[site][0])
                 price, set_name, url = extract_info(driver, handles[site][1], card_name)
-                if price is not None:
-                    print(f"INFO:{card_name}, {price}, {url}")
-                if price is not None and (lowest_price is None or price < lowest_price):
-                    lowest_price = price
-                    corresponding_set = set_name
-                    corresponding_url = url
-            if lowest_price is not None:
-                insert_or_update_card_data(card_name, lowest_price, corresponding_set, corresponding_url)
-                write_lowest_price(card_name, lowest_price, corresponding_set, corresponding_url, output_csv_file)
+                if price:
+                    print(f"INFO:{card_name}, ${price}, {url}")
+                    result = (price, set_name, url)
+                    if (cheapest is None or price < cheapest[0]):
+                       second_cheapest = cheapest
+                       cheapest = result
+                    elif second_cheapest is None or price < second_cheapest[0]:
+                        second_cheapest = result
+            if cheapest:
+                lowest_price, corresponding_set, corresponding_url = cheapest
+                discount = 0.0
+                if second_cheapest:
+                    second_lowest_price = second_cheapest[0]
+                    discount = round(second_lowest_price - lowest_price, 2)
+                insert_or_update_card_data(card_name, lowest_price, corresponding_set, corresponding_url, discount)
+                write_lowest_price(card_name, lowest_price, corresponding_set, corresponding_url, discount, output_csv_file)
                 GREEN = '\033[32m'
                 RESET = '\033[0m'
-                print(f"{GREEN}{card_name}, {lowest_price}, {corresponding_url}{RESET}")
+                print(f"{GREEN}{card_name}, ${lowest_price}, DIFF: ${discount}, {corresponding_url}{RESET}")
             for handle in list(handles.values())[:-1]:
                 driver.switch_to.window(handle[0])
                 driver.close()
